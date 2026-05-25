@@ -1,0 +1,809 @@
+---
+title: "Iran and Nepal Political Transition"
+author: "Valdemar Peter Tjørnelund Nissen, Theis Daniel Jensen, Markus Teilmann-Jørgensen"
+date: "2026-05-25"
+output: html_document
+---
+
+#The Practicalities
+library(tidyverse)
+library(scales)
+setwd("~/Desktop/DamEksamen")
+list.files("data")
+
+#Load the Data
+iran_raw <- read_csv("data/iran.csv", skip = 4, na = c("", ".."))
+nepal_raw <- read_csv("data/nepal.csv", skip = 4, na = c("", ".."))
+
+"Cleaning the Data"
+clean_wdi <- function(data) {
+  data %>% 
+    select(-starts_with("Unnamed")) %>% 
+    pivot_longer(
+      cols=matches("^\\d{4}$"),
+      names_to = "year",
+      values_to = "value"
+    ) %>% 
+    mutate(
+      year=as.integer(year),
+      value=as.numeric(value)
+    )
+}
+
+iran <- clean_wdi(iran_raw)
+nepal <- clean_wdi(nepal_raw)
+
+combined <- bind_rows(iran, nepal)
+
+combined <- combined %>%
+  mutate(
+    transition_year = case_when(
+      `Country Name` == "Iran, Islamic Rep." ~ 1979,
+      `Country Name` == "Nepal" ~ 2007,
+      TRUE ~ NA_real_
+    ),
+    years_from_transition = year - transition_year
+  )
+
+#Creating a overview of the indicators 
+
+civil_indicators <- c(
+  "Proportion of seats held by women in national parliaments (%)",
+  "School enrollment, primary and secondary (gross), gender parity index (GPI)",
+  "School enrollment, secondary, female (% gross)",
+  "School enrollment, primary, female (% gross)",
+  "Literacy rate, adult female (% of females ages 15 and above)",
+  "Labor force participation rate, female (% of female population ages 15+) (modeled ILO estimate)",
+  "Fertility rate, total (births per woman)",
+  "Adolescent fertility rate (births per 1,000 women ages 15-19)",
+  "Mortality rate, under-5 (per 1,000 live births)",
+  "Mortality rate, infant (per 1,000 live births)"
+)
+
+state_indicators <- c(
+  "GDP (current US$)",
+  "GDP per capita (current US$)",
+  "GDP growth (annual %)",
+  "Military expenditure (% of GDP)",
+  "Military expenditure (current USD)",
+  "Population, total",
+  "Urban population (% of total population)",
+  "Rural population (% of total population)",
+  "International migrant stock (% of population)",
+  "Refugees under the mandate of the UNHCR by country or territory of origin",
+  "Trade (% of GDP)",
+  "Inflation, consumer prices (annual %)",
+  "Individuals using the Internet (% of population)"
+)
+
+civil_selected <- combined %>%
+  filter(`Indicator Name` %in% civil_indicators)
+
+state_selected <- combined %>%
+  filter(`Indicator Name` %in% state_indicators)
+
+# Overview over the civil rights graphs
+ggplot(civil_selected, aes(x = years_from_transition, y = value, color = `Country Name`)) +
+  geom_line() +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  facet_wrap(~ `Indicator Name`, scales = "free_y") +
+  labs(
+    title = "Civil rights og social udvikling før og efter politisk transition",
+    x = "År fra transition",
+    y = "Værdi",
+    color = "Land"
+  ) +
+  theme_minimal()
+
+# Overview over the broader national development graphs
+ggplot(state_selected, aes(x = years_from_transition, y = value, color = `Country Name`)) +
+  geom_line() +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  facet_wrap(~ `Indicator Name`, scales = "free_y") +
+  labs(
+    title = "Statslig og økonomisk udvikling før og efter politisk transition",
+    x = "År fra transition",
+    y = "Værdi",
+    color = "Land"
+  ) +
+  theme_minimal()
+
+#Closer examination of key graphs
+
+#---------------------------------------------------------------
+#"Proportion of seats held by women in national parliaments (%)"
+#---------------------------------------------------------------
+
+#Bar chart of "Proportion of seats held by women in national parliaments (%)"
+women_parliament_summary <- combined %>%
+  filter(
+    `Indicator Name` == "Proportion of seats held by women in national parliaments (%)",
+    year >= 1997,
+    year <= 2017,
+    year != 2007,
+    !is.na(value)
+  ) %>%
+  mutate(
+    period = if_else(year < 2007, "Before 2007", "After 2007"),
+    period = factor(period, levels = c("Before 2007", "After 2007"))
+  ) %>%
+  group_by(`Country Name`, period) %>%
+  summarise(
+    mean_value = mean(value),
+    .groups = "drop"
+  )
+
+ggplot(women_parliament_summary, aes(x = period, y = mean_value, fill = `Country Name`)) +
+  geom_col(position = "dodge") +
+  geom_text(
+    aes(label = round(mean_value, 1)),
+    position = position_dodge(width = 0.9),
+    vjust = -0.5
+  ) +
+  labs(
+    title = "Women in Parliament Before and After 2007",
+    x = "",
+    y = "Average seats held by women (%)",
+    fill = "Country"
+  ) +
+  theme_minimal()
+
+# Percentage calculation: Women in Parliament Before and After 2007
+
+women_parliament_change <- combined %>%
+  filter(
+    `Indicator Name` == "Proportion of seats held by women in national parliaments (%)",
+    year >= 1997,
+    year <= 2017,
+    year != 2007,
+    !is.na(value)
+  ) %>%
+  mutate(
+    period = if_else(year < 2007, "Before 2007", "After 2007"),
+    period = factor(period, levels = c("Before 2007", "After 2007"))
+  ) %>%
+  group_by(`Country Name`, period) %>%
+  summarise(
+    mean_value = mean(value),
+    .groups = "drop"
+  ) %>%
+  pivot_wider(
+    names_from = period,
+    values_from = mean_value
+  ) %>%
+  mutate(
+    percentage_change = ((`After 2007` - `Before 2007`) / `Before 2007`) * 100
+  ) %>%
+  mutate(
+    across(
+      c(`Before 2007`, `After 2007`, percentage_change),
+      ~ round(.x, 1)
+    )
+  )
+
+women_parliament_change
+
+#-----------------------------------
+"Military expenditure (current USD)"
+#-----------------------------------
+
+#Graph on "Military expenditure (current USD)"
+
+military_usd <- combined %>%
+  filter(
+    `Indicator Name` == "Military expenditure (current USD)",
+    years_from_transition >= -20,
+    years_from_transition <= 20,
+    !is.na(value)
+  )
+
+ggplot(military_usd, aes(x = years_from_transition, y = value)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2.5) +
+  geom_vline(xintercept = 0, linetype = "dashed", linewidth = 0.8) +
+  facet_wrap(~ `Country Name`, scales = "free_y") +
+  scale_x_continuous(
+    breaks = seq(-10, 10, by = 5),
+    limits = c(-10, 10)
+  ) +
+  scale_y_continuous(labels = label_dollar(scale_cut = cut_short_scale())) +
+  labs(
+    title = "Military Expenditure in Current USD",
+    subtitle = "Before and after political transition",
+    x = "Years from transition",
+    y = "Military expenditure (current USD)",
+    caption = "Source: World Bank"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 18, face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(size = 13, hjust = 0.5),
+    axis.title.y = element_text(face = "bold"),
+    axis.title.x = element_text(face = "bold"),
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(size = 12, face = "bold"),
+    plot.caption = element_text(hjust = 0)
+  )
+
+# Percentage calculation of "Military expenditure (current USD)"
+
+#Iran
+iran_military_points <- combined %>%
+  filter(
+    `Country Name` == "Iran, Islamic Rep.",
+    `Indicator Name` == "Military expenditure (current USD)",
+    years_from_transition %in% c(-10, -6, -1, 0, 1, 4, 5, 9, 10),
+    !is.na(value)
+  ) %>%
+  select(years_from_transition, year, value) %>%
+  arrange(years_from_transition)
+
+iran_military_points
+
+iran_military_change <- iran_military_points %>%
+  summarise(
+    change_minus10_to_minus6 = ((value[years_from_transition == -6] -
+                                   value[years_from_transition == -10]) /
+                                  value[years_from_transition == -10]) * 100,
+    
+    change_minus6_to_minus1 = ((value[years_from_transition == -1] -
+                                  value[years_from_transition == -6]) /
+                                 value[years_from_transition == -6]) * 100,
+    
+    change_minus1_to_0 = ((value[years_from_transition == 0] -
+                             value[years_from_transition == -1]) /
+                            value[years_from_transition == -1]) * 100,
+    
+    change_0_to_1 = ((value[years_from_transition == 1] -
+                        value[years_from_transition == 0]) /
+                       value[years_from_transition == 0]) * 100,
+    
+    change_1_to_4 = ((value[years_from_transition == 4] -
+                        value[years_from_transition == 1]) /
+                       value[years_from_transition == 1]) * 100,
+    
+    change_4_to_5 = ((value[years_from_transition == 5] -
+                        value[years_from_transition == 4]) /
+                       value[years_from_transition == 4]) * 100,
+    
+    change_5_to_9 = ((value[years_from_transition == 9] -
+                        value[years_from_transition == 5]) /
+                       value[years_from_transition == 5]) * 100,
+    
+    change_9_to_10 = ((value[years_from_transition == 10] -
+                         value[years_from_transition == 9]) /
+                        value[years_from_transition == 9]) * 100,
+    
+    change_0_to_10 = ((value[years_from_transition == 10] -
+                         value[years_from_transition == 0]) /
+                        value[years_from_transition == 0]) * 100
+  ) %>%
+  mutate(
+    across(everything(), ~ round(.x, 1))
+  )
+
+iran_military_change
+
+#Nepal
+nepal_military_points <- combined %>%
+  filter(
+    `Country Name` == "Nepal",
+    `Indicator Name` == "Military expenditure (current USD)",
+    years_from_transition %in% c(-10, -7, -4, 0, 4, 5, 7, 10),
+    !is.na(value)
+  ) %>%
+  select(years_from_transition, year, value) %>%
+  arrange(years_from_transition)
+
+nepal_military_points
+
+nepal_military_change <- nepal_military_points %>%
+  summarise(
+    change_minus10_to_minus7 = ((value[years_from_transition == -7] -
+                                   value[years_from_transition == -10]) /
+                                  value[years_from_transition == -10]) * 100,
+    
+    change_minus4_to_0 = ((value[years_from_transition == 0] -
+                             value[years_from_transition == -4]) /
+                            value[years_from_transition == -4]) * 100,
+    
+    change_0_to_4 = ((value[years_from_transition == 4] -
+                        value[years_from_transition == 0]) /
+                       value[years_from_transition == 0]) * 100,
+    
+    change_4_to_5 = ((value[years_from_transition == 5] -
+                        value[years_from_transition == 4]) /
+                       value[years_from_transition == 4]) * 100,
+    
+    change_5_to_7 = ((value[years_from_transition == 7] -
+                        value[years_from_transition == 5]) /
+                       value[years_from_transition == 5]) * 100,
+    
+    change_7_to_10 = ((value[years_from_transition == 10] -
+                         value[years_from_transition == 7]) /
+                        value[years_from_transition == 7]) * 100,
+    
+    change_0_to_10 = ((value[years_from_transition == 10] -
+                         value[years_from_transition == 0]) /
+                        value[years_from_transition == 0]) * 100
+  ) %>%
+  mutate(
+    across(everything(), ~ round(.x, 1))
+  )
+
+nepal_military_change
+
+#-----------------
+#"Trade (% of GDP)"
+#-----------------
+
+#Graph on "Trade (% of GDP)"
+trade_index <- combined %>%
+  filter(
+    `Indicator Name` == "Trade (% of GDP)",
+    years_from_transition >= -8,
+    years_from_transition <= 8,
+    !is.na(value)
+  ) %>%
+  group_by(`Country Name`) %>%
+  mutate(
+    baseline = mean(value[years_from_transition >= -3 & years_from_transition <= -1], na.rm = TRUE),
+    indexed_value = (value / baseline) * 100
+  ) %>%
+  ungroup()
+
+ggplot(trade_index, aes(x = years_from_transition, y = indexed_value, color = `Country Name`)) +
+  geom_line(linewidth = 0.9) +
+  geom_point(size = 2.5) +
+  geom_vline(xintercept = 0, linetype = "dashed", linewidth = 0.7) +
+  scale_y_continuous(labels = function(x) paste0(x, "%")) +
+  labs(
+    title = "Trade Before and After Political Transition",
+    subtitle = "Baseline: average of three years before transition = 100",
+    x = "Years from transition",
+    y = "Trade index",
+    color = "Country",
+    caption = "Source: World Bank"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 18, face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(size = 13, hjust = 0.5),
+    axis.title.y = element_text(face = "bold"),
+    axis.title.x = element_text(face = "bold"),
+    panel.grid.minor = element_blank(),
+    legend.position = "bottom",
+    plot.caption = element_text(hjust = 0)
+  )
+
+# Percentage calculation of Trade Index
+iran_trade_index <- combined %>%
+  filter(
+    `Country Name` == "Iran, Islamic Rep.",
+    `Indicator Name` == "Trade (% of GDP)",
+    years_from_transition >= -10,
+    years_from_transition <= 10,
+    !is.na(value)
+  ) %>%
+  group_by(`Country Name`) %>%
+  mutate(
+    baseline = mean(value[years_from_transition >= -3 & years_from_transition <= -1], na.rm = TRUE),
+    trade_index = (value / baseline) * 100
+  ) %>%
+  ungroup()
+
+iran_trade_drop <- iran_trade_index %>%
+  filter(years_from_transition %in% c(-4, 6)) %>%
+  select(years_from_transition, year, value, trade_index) %>%
+  arrange(years_from_transition)
+
+iran_trade_drop
+
+nepal_trade_points <- combined %>%
+  filter(
+    `Country Name` == "Nepal",
+    `Indicator Name` == "Trade (% of GDP)",
+    years_from_transition >= -10,
+    years_from_transition <= 10,
+    !is.na(value)
+  ) %>%
+  mutate(
+    baseline = mean(value[years_from_transition >= -3 & years_from_transition <= -1]),
+    trade_index = (value / baseline) * 100
+  ) %>%
+  filter(years_from_transition %in% c(3, 4, 7)) %>%
+  select(years_from_transition, year, value, trade_index) %>%
+  arrange(years_from_transition)
+
+nepal_trade_points
+
+#-----------------------------------------
+"Fertility rate, total (births per woman)"
+#-----------------------------------------
+
+# Graph on "Fertility rate, total (births per woman)"
+fertility_direct <- combined %>%
+  filter(
+    `Indicator Name` == "Fertility rate, total (births per woman)",
+    years_from_transition >= -20,
+    years_from_transition <= 20,
+    !is.na(value)
+  )
+
+ggplot(fertility_direct, aes(x = years_from_transition, y = value, color = `Country Name`)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2.5) +
+  geom_vline(xintercept = 0, linetype = "dashed", linewidth = 0.8) +
+  scale_x_continuous(
+    breaks = seq(-20, 20, by = 5),
+    limits = c(-20, 20)
+  ) +
+  labs(
+    title = "Fertility Rate Before and After Political Transition",
+    subtitle = "Total births per woman",
+    x = "Years from transition",
+    y = "Births per woman",
+    color = "Country",
+    caption = "Source: World Bank"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 18, face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(size = 13, hjust = 0.5),
+    axis.title.y = element_text(face = "bold"),
+    axis.title.x = element_text(face = "bold"),
+    panel.grid.minor = element_blank(),
+    legend.position = "bottom",
+    plot.caption = element_text(hjust = 0)
+  )
+
+# Percentage calculation: Fertility Rate
+
+fertility_points <- combined %>%
+  filter(
+    `Indicator Name` == "Fertility rate, total (births per woman)",
+    years_from_transition %in% c(-13, -10, -5, 0, 6, 15, 17),
+    !is.na(value)
+  ) %>%
+  select(`Country Name`, years_from_transition, year, value) %>%
+  arrange(`Country Name`, years_from_transition)
+
+fertility_points
+
+fertility_change <- fertility_points %>%
+  group_by(`Country Name`) %>%
+  summarise(
+    change_minus13_to_minus10 = ((value[years_from_transition == -10] -
+                                    value[years_from_transition == -13]) /
+                                   value[years_from_transition == -13]) * 100,
+    
+    change_minus10_to_minus5 = ((value[years_from_transition == -5] -
+                                   value[years_from_transition == -10]) /
+                                  value[years_from_transition == -10]) * 100,
+    
+    change_minus5_to_0 = ((value[years_from_transition == 0] -
+                             value[years_from_transition == -5]) /
+                            value[years_from_transition == -5]) * 100,
+    
+    change_0_to_6 = ((value[years_from_transition == 6] -
+                        value[years_from_transition == 0]) /
+                       value[years_from_transition == 0]) * 100,
+    
+    change_6_to_15 = ((value[years_from_transition == 15] -
+                         value[years_from_transition == 6]) /
+                        value[years_from_transition == 6]) * 100,
+    
+    change_15_to_17 = ((value[years_from_transition == 17] -
+                          value[years_from_transition == 15]) /
+                         value[years_from_transition == 15]) * 100,
+    
+    change_0_to_17 = ((value[years_from_transition == 17] -
+                         value[years_from_transition == 0]) /
+                        value[years_from_transition == 0]) * 100,
+    
+    .groups = "drop"
+  ) %>%
+  mutate(
+    across(where(is.numeric), ~ round(.x, 1))
+  )
+
+fertility_change
+
+#----------------------------------------------
+#"School enrollment, primary, female (% gross)"
+#----------------------------------------------
+
+#Graph on "School enrollment, primary, female (% gross)"
+female_primary_index <- combined %>%
+  filter(
+    `Indicator Name` == "School enrollment, primary, female (% gross)",
+    years_from_transition >= -20,
+    years_from_transition <= 20,
+    !is.na(value)
+  ) %>%
+  group_by(`Country Name`) %>%
+  mutate(
+    baseline = mean(value[years_from_transition >= -3 & years_from_transition <= -1], na.rm = TRUE),
+    enrollment_index = (value / baseline) * 100
+  ) %>%
+  ungroup()
+
+ggplot(female_primary_index, aes(x = years_from_transition, y = enrollment_index, color = `Country Name`)) +
+  geom_line(linewidth = 0.9) +
+  geom_point(size = 2.5) +
+  geom_vline(xintercept = 0, linetype = "dashed", linewidth = 0.7) +
+  scale_x_continuous(
+    breaks = seq(-20, 20, by = 5),
+    limits = c(-20, 20)
+  ) +
+  scale_y_continuous(labels = function(x) paste0(round(x), "%")) +
+  labs(
+    title = "Female Primary School Enrollment Before and After Political Transition",
+    subtitle = "Baseline: average of three years before transition = 100",
+    x = "Years from transition",
+    y = "Enrollment index",
+    color = "Country",
+    caption = "Source: World Bank"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 18, face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(size = 13, hjust = 0.5),
+    axis.title.y = element_text(face = "bold"),
+    axis.title.x = element_text(face = "bold"),
+    panel.grid.minor = element_blank(),
+    legend.position = "bottom",
+    plot.caption = element_text(hjust = 0)
+  )
+
+# Percentage calculation: Female Primary School Enrollment Index
+
+point_minus7 <- female_primary_index %>%
+  filter(years_from_transition == -7) %>%
+  select(`Country Name`, year_minus7 = years_from_transition, index_minus7 = enrollment_index)
+
+point_near0 <- female_primary_index %>%
+  group_by(`Country Name`) %>%
+  slice_min(abs(years_from_transition - 0), n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(`Country Name`, year_near0 = years_from_transition, index_near0 = enrollment_index)
+
+point_nepal_4 <- female_primary_index %>%
+  filter(
+    `Country Name` == "Nepal",
+    years_from_transition == 4
+  ) %>%
+  select(`Country Name`, year_4 = years_from_transition, index_4 = enrollment_index)
+
+point_15 <- female_primary_index %>%
+  filter(years_from_transition == 15) %>%
+  select(`Country Name`, year_15 = years_from_transition, index_15 = enrollment_index)
+
+
+female_primary_change_summary <- point_minus7 %>%
+  inner_join(point_near0, by = "Country Name") %>%
+  left_join(point_nepal_4, by = "Country Name") %>%
+  inner_join(point_15, by = "Country Name") %>%
+  mutate(
+    change_minus7_to_near0 = ((index_near0 - index_minus7) / index_minus7) * 100,
+    change_near0_to_15 = ((index_15 - index_near0) / index_near0) * 100,
+    change_near0_to_4 = ((index_4 - index_near0) / index_near0) * 100,
+    change_4_to_15 = ((index_15 - index_4) / index_4) * 100
+  ) %>%
+  mutate(
+    across(
+      c(
+        index_minus7, index_near0, index_4, index_15,
+        change_minus7_to_near0, change_near0_to_15,
+        change_near0_to_4, change_4_to_15
+      ),
+      ~ round(.x, 1)
+    )
+  )
+
+female_primary_change_summary
+
+#Nepal
+female_primary_nepal_change <- female_primary_index %>%
+  filter(
+    `Country Name` == "Nepal",
+    years_from_transition %in% c(-7, 0, 4, 15)
+  ) %>%
+  select(years_from_transition, enrollment_index) %>%
+  pivot_wider(
+    names_from = years_from_transition,
+    values_from = enrollment_index,
+    names_prefix = "year_"
+  ) %>%
+  mutate(
+    change_minus7_to_0 = ((year_0 - `year_-7`) / `year_-7`) * 100,
+    change_0_to_4 = ((year_4 - year_0) / year_0) * 100,
+    change_4_to_15 = ((year_15 - year_4) / year_4) * 100,
+    change_0_to_15 = ((year_15 - year_0) / year_0) * 100
+  ) %>%
+  mutate(
+    across(everything(), ~ round(.x, 1))
+  )
+
+female_primary_nepal_change
+
+#Iran
+female_primary_iran_change <- female_primary_index %>%
+  filter(
+    `Country Name` == "Iran, Islamic Rep.",
+    years_from_transition %in% c(-7, -1, 4, 15)
+  ) %>%
+  select(years_from_transition, enrollment_index) %>%
+  pivot_wider(
+    names_from = years_from_transition,
+    values_from = enrollment_index,
+    names_prefix = "year_"
+  ) %>%
+  mutate(
+    change_minus7_to_minus1 = ((`year_-1` - `year_-7`) / `year_-7`) * 100,
+    change_minus1_to_4 = ((year_4 - `year_-1`) / `year_-1`) * 100,
+    change_4_to_15 = ((year_15 - year_4) / year_4) * 100,
+    change_minus1_to_15 = ((year_15 - `year_-1`) / `year_-1`) * 100
+  ) %>%
+  mutate(
+    across(everything(), ~ round(.x, 1))
+  )
+
+female_primary_iran_change
+#------------------------------------------
+# GDP Before and After Political Transition
+#------------------------------------------
+
+gdp_index <- combined %>%
+  filter(
+    `Indicator Name` == "GDP (current US$)",
+    years_from_transition >= -20,
+    years_from_transition <= 20,
+    !is.na(value)
+  ) %>%
+  group_by(`Country Name`) %>%
+  mutate(
+    baseline = mean(value[years_from_transition >= -3 & years_from_transition <= -1], na.rm = TRUE),
+    indexed_value = (value / baseline) * 100
+  ) %>%
+  ungroup()
+
+ggplot(gdp_index, aes(x = years_from_transition, y = indexed_value, color = `Country Name`)) +
+  geom_line(linewidth = 0.9) +
+  geom_point(size = 2.5) +
+  geom_vline(xintercept = 0, linetype = "dashed", linewidth = 0.7) +
+  scale_y_continuous(labels = function(x) paste0(round(x), "%")) +
+  labs(
+    title = "GDP Before and After Political Transition",
+    subtitle = "Baseline: average of three years before transition = 100",
+    x = "Years from transition",
+    y = "GDP index",
+    color = "Country",
+    caption = "Source: World Bank"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 18, face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(size = 13, hjust = 0.5),
+    axis.title.y = element_text(face = "bold"),
+    axis.title.x = element_text(face = "bold"),
+    panel.grid.minor = element_blank(),
+    legend.position = "bottom",
+    plot.caption = element_text(hjust = 0)
+  )
+
+# Percentage calculation: GDP Index
+
+# Iran GDP index points
+iran_gdp_points <- gdp_index %>%
+  filter(
+    `Country Name` == "Iran, Islamic Rep.",
+    years_from_transition %in% c(-19, -6, -4, 0, 7, 8, 14, 17, 20)
+  ) %>%
+  select(years_from_transition, year, value, indexed_value) %>%
+  arrange(years_from_transition)
+
+iran_gdp_points
+
+iran_gdp_change <- iran_gdp_points %>%
+  summarise(
+    change_minus19_to_minus6 = ((indexed_value[years_from_transition == -6] -
+                                   indexed_value[years_from_transition == -19]) /
+                                  indexed_value[years_from_transition == -19]) * 100,
+    
+    change_minus6_to_minus4 = ((indexed_value[years_from_transition == -4] -
+                                  indexed_value[years_from_transition == -6]) /
+                                 indexed_value[years_from_transition == -6]) * 100,
+    
+    change_minus4_to_0 = ((indexed_value[years_from_transition == 0] -
+                             indexed_value[years_from_transition == -4]) /
+                            indexed_value[years_from_transition == -4]) * 100,
+    
+    change_0_to_7 = ((indexed_value[years_from_transition == 7] -
+                        indexed_value[years_from_transition == 0]) /
+                       indexed_value[years_from_transition == 0]) * 100,
+    
+    change_7_to_8 = ((indexed_value[years_from_transition == 8] -
+                        indexed_value[years_from_transition == 7]) /
+                       indexed_value[years_from_transition == 7]) * 100,
+    
+    change_8_to_14 = ((indexed_value[years_from_transition == 14] -
+                         indexed_value[years_from_transition == 8]) /
+                        indexed_value[years_from_transition == 8]) * 100,
+    
+    change_14_to_17 = ((indexed_value[years_from_transition == 17] -
+                          indexed_value[years_from_transition == 14]) /
+                         indexed_value[years_from_transition == 14]) * 100,
+    
+    change_17_to_20 = ((indexed_value[years_from_transition == 20] -
+                          indexed_value[years_from_transition == 17]) /
+                         indexed_value[years_from_transition == 17]) * 100,
+    
+    change_0_to_20 = ((indexed_value[years_from_transition == 20] -
+                         indexed_value[years_from_transition == 0]) /
+                        indexed_value[years_from_transition == 0]) * 100
+  ) %>%
+  mutate(
+    across(everything(), ~ round(.x, 1))
+  )
+
+iran_gdp_change
+
+# Nepal GDP index points
+nepal_gdp_points <- gdp_index %>%
+  filter(
+    `Country Name` == "Nepal",
+    years_from_transition %in% c(-20, -6, 0, 1, 3, 4, 7, 8, 11, 13, 15, 17)
+  ) %>%
+  select(years_from_transition, year, value, indexed_value) %>%
+  arrange(years_from_transition)
+
+nepal_gdp_points
+
+nepal_gdp_change <- nepal_gdp_points %>%
+  summarise(
+    change_minus20_to_minus6 = ((indexed_value[years_from_transition == -6] -
+                                   indexed_value[years_from_transition == -20]) /
+                                  indexed_value[years_from_transition == -20]) * 100,
+    
+    change_minus6_to_0 = ((indexed_value[years_from_transition == 0] -
+                             indexed_value[years_from_transition == -6]) /
+                            indexed_value[years_from_transition == -6]) * 100,
+    
+    change_0_to_1 = ((indexed_value[years_from_transition == 1] -
+                        indexed_value[years_from_transition == 0]) /
+                       indexed_value[years_from_transition == 0]) * 100,
+    
+    change_3_to_4 = ((indexed_value[years_from_transition == 4] -
+                        indexed_value[years_from_transition == 3]) /
+                       indexed_value[years_from_transition == 3]) * 100,
+    
+    change_4_to_7 = ((indexed_value[years_from_transition == 7] -
+                        indexed_value[years_from_transition == 4]) /
+                       indexed_value[years_from_transition == 4]) * 100,
+    
+    change_7_to_8 = ((indexed_value[years_from_transition == 8] -
+                        indexed_value[years_from_transition == 7]) /
+                       indexed_value[years_from_transition == 7]) * 100,
+    
+    change_8_to_11 = ((indexed_value[years_from_transition == 11] -
+                         indexed_value[years_from_transition == 8]) /
+                        indexed_value[years_from_transition == 8]) * 100,
+    
+    change_13_to_15 = ((indexed_value[years_from_transition == 15] -
+                          indexed_value[years_from_transition == 13]) /
+                         indexed_value[years_from_transition == 13]) * 100,
+    
+    change_15_to_17 = ((indexed_value[years_from_transition == 17] -
+                          indexed_value[years_from_transition == 15]) /
+                         indexed_value[years_from_transition == 15]) * 100,
+    
+    change_0_to_17 = ((indexed_value[years_from_transition == 17] -
+                         indexed_value[years_from_transition == 0]) /
+                        indexed_value[years_from_transition == 0]) * 100
+  ) %>%
+  mutate(
+    across(everything(), ~ round(.x, 1))
+  )
+
+nepal_gdp_change
